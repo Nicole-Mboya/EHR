@@ -452,11 +452,13 @@ def init_database():
 
 class MentalHealthApp:
     def __init__(self):
-        codespace_name = os.environ.get("CODESPACE_NAME")
+        import os
+        codespace_name = os.getenv("CODESPACE_NAME")
         if codespace_name:
-            self.api_base = f"https://5000-{codespace_name}.github.dev"
+            self.api_base = f"https://{codespace_name}-5000.app.github.dev"
         else:
             self.api_base = "http://localhost:5000"
+
 
     def init_session_state(self):
         """Initialize session state variables"""
