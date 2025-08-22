@@ -421,24 +421,30 @@ def get_stats():
 
     return jsonify({'stats': stats}), 200
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint"""
+    return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}), 200
+
 
 # Initialize database
-with app.app_context():
-    db.create_all()
+def init_database():
+    """Initialize database with sample data"""
+    with app.app_context():
+        db.create_all()
+        
+        # Create sample users if they don't exist
+        if not User.query.filter_by(email='patient@example.com').first():
+            patient = User(name='Alex Johnson', email='patient@example.com', role='patient')
+            patient.set_password('password123')
+            db.session.add(patient)
 
-    # Create sample users if they don't exist
-    if not User.query.filter_by(email='patient@example.com').first():
-        patient = User(name='Alex Johnson', email='patient@example.com', role='patient')
-        patient.set_password('password123')
-        db.session.add(patient)
+            provider = User(name='Dr. Sarah Smith', email='provider@example.com', role='provider')
+            provider.set_password('password123')
+            db.session.add(provider)
 
-        provider = User(name='Dr. Sarah Smith', email='provider@example.com', role='provider')
-        provider.set_password('password123')
-        db.session.add(provider)
-
-        db.session.commit()
-        print("Sample users created!")
-
+            db.session.commit()
+            print("✅ Sample users created!")
 
 # ================================
 # FRONTEND - Streamlit Interface
@@ -446,8 +452,14 @@ with app.app_context():
 
 class MentalHealthApp:
     def __init__(self):
-        self.api_base = "http://localhost:5000/api"
-        self.session = requests.Session()  # Maintain session for cookies
+    # For GitHub Codespaces, use the forwarded URL
+        codespace_name = os.environ.get('CODESPACE_NAME')
+    if codespace_name:
+        self.api_base = f"https://{codespace_name}-5000.app.github.dev/api"
+    else:
+        self.api_base = "http://127.0.0.1:5000/api"
+        self.session = requests.Session()
+
 
     def init_session_state(self):
         """Initialize session state variables"""
@@ -457,6 +469,21 @@ class MentalHealthApp:
             st.session_state.user = None
         if 'auth_checked' not in st.session_state:
             st.session_state.auth_checked = False
+        if 'flask_started' not in st.session_state:
+            st.session_state.flask_started = False
+
+    def ensure_flask_running(self):
+        """Ensure Flask server is running"""
+        if not st.session_state.flask_started:
+            with st.spinner("🚀 Starting backend server..."):
+                if start_flask_server():
+                    st.session_state.flask_started = True
+                    st.success("✅ Backend server is ready!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to start backend server. Please try refreshing the page.")
+                    st.stop()
 
     def api_request(self, endpoint, method='GET', data=None):
         """Make API requests to Flask backend with proper error handling"""
@@ -1614,11 +1641,58 @@ class MentalHealthApp:
 # MAIN EXECUTION
 # ================================
 
-def run_flask_server():
-    """Run Flask backend server"""
-    print("Starting Flask backend server...")
-    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
+# Global variable to track if Flask is running
+flask_server_running = False
+flask_thread = None
 
+def run_flask_server():
+    """Run Flask server in a thread"""
+    global flask_server_running
+    try:
+        init_database()
+        flask_server_running = True
+        print("🔊 Flask Backend Server starting on port 5000")
+        # Use 0.0.0.0 for Codespaces to allow external access
+        app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False, threaded=True)
+    except Exception as e:
+        print(f"❌ Flask server error: {e}")
+        flask_server_running = False
+
+def start_flask_server():
+    """Start Flask server in background thread"""
+    global flask_thread, flask_server_running
+    
+    if flask_thread and flask_thread.is_alive():
+        return True
+    
+    flask_thread = threading.Thread(target=run_flask_server, daemon=True)
+    flask_thread.start()
+    
+    # Wait for server to start
+    max_wait = 15  # Increased timeout for Codespaces
+    wait_time = 0
+    
+    # Determine the correct health check URL
+    codespace_name = os.environ.get('CODESPACE_NAME')
+    if codespace_name:
+        health_url = f"https://{codespace_name}-5000.app.github.dev/api/health"
+    else:
+        health_url = "http://127.0.0.1:5000/api/health"
+    
+    while wait_time < max_wait:
+        try:
+            response = requests.get(health_url, timeout=2)
+            if response.status_code == 200:
+                print("✅ Flask backend is running and accessible")
+                return True
+        except:
+            pass
+        
+        time.sleep(0.5)
+        wait_time += 0.5
+    
+    print("⚠️ Flask backend may not be fully ready yet...")
+    return flask_server_running
 
 def run_streamlit_app():
     """Run Streamlit frontend application"""
@@ -1627,64 +1701,15 @@ def run_streamlit_app():
 
 
 if __name__ == "__main__":
-    import multiprocessing
-    import subprocess
-    import sys
-    import time
+    print("🚀 To run this application:")
+    print("   streamlit run app.py")
+    print("\n🔗 The app will be available at:")
+    print("   http://localhost:8501")
 
-    # Check if we're running in Streamlit
-    if 'streamlit' in sys.modules:
-        # We're already in Streamlit, just run the app
-        run_streamlit_app()
-    else:
-        print("🚀 Starting Mental Health Application Full Stack...")
-
-        # Start Flask in a separate process
-        flask_process = multiprocessing.Process(target=run_flask_server)
-        flask_process.daemon = True
-        flask_process.start()
-
-        print("📊 Flask Backend Server starting on http://localhost:5000")
-
-        # Wait for Flask to start
-        time.sleep(3)
-
-        try:
-            # Test Flask connection
-            import requests
-
-            response = requests.get("http://localhost:5000/api/users", timeout=5)
-            print("✅ Flask backend is running and accessible")
-        except:
-            print("⚠️  Flask backend may not be fully ready yet...")
-
-        print("🌐 Starting Streamlit Frontend...")
-        print("📱 Open your browser to http://localhost:8501")
-        print("\n🔐 Demo Credentials:")
-        print("   Patient: patient@example.com / password123")
-        print("   Provider: provider@example.com / password123")
-        print("\n💡 Features now fully integrated:")
-        print("   ✅ Real user authentication")
-        print("   ✅ Persistent mood tracking")
-        print("   ✅ Journal entries saved to database")
-        print("   ✅ Appointment scheduling")
-        print("   ✅ Real-time messaging")
-        print("   ✅ Progress analytics with real data")
-        print("   ✅ Provider dashboard with patient data")
-
-        # Run Streamlit using subprocess to avoid import conflicts
-        try:
-            subprocess.run([
-                sys.executable, "-m", "streamlit", "run", __file__,
-                "--server.port=8501",
-                "--server.address=0.0.0.0"
-            ])
-        except KeyboardInterrupt:
-            print("\n👋 Shutting down servers...")
-            flask_process.terminate()
-            flask_process.join()
-        except Exception as e:
-            print(f"Error starting Streamlit: {e}")
-            print("You can manually run: streamlit run thisfile.py")
-            flask_process.terminate()
-            flask_process.join()
+# Simple Streamlit detection
+try:
+    if 'streamlit' in sys.modules or '_streamlit' in sys.modules:
+        mental_health_app = MentalHealthApp()
+        mental_health_app.run()
+except:
+    pass
