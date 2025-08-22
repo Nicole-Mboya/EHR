@@ -1,0 +1,5 @@
+streamlit>=1.32
+sqlalchemy>=2.0
+bcrypt>=4.1
+matplotlib>=3.8
+
