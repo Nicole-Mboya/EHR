@@ -451,14 +451,11 @@ def init_database():
 # ================================
 
 class MentalHealthApp:
-    def __init__(self):
-    # For GitHub Codespaces, use the forwarded URL
-        codespace_name = os.environ.get('CODESPACE_NAME')
+    codespace_name = os.environ.get("CODESPACE_NAME")
     if codespace_name:
-        self.api_base = f"https://{codespace_name}-5000.app.github.dev/api"
+        api_base_url = f"https://5000-{codespace_name}.github.dev"
     else:
-        self.api_base = "http://127.0.0.1:5000/api"
-        self.session = requests.Session()
+        api_base_url = "http://localhost:5000"
 
 
     def init_session_state(self):
