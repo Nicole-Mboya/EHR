@@ -2,4 +2,11 @@ streamlit>=1.32
 sqlalchemy>=2.0
 bcrypt>=4.1
 matplotlib>=3.8
-
+Flask>=2.2,<3
+Flask-Cors>=3.0
+Flask-SQLAlchemy>=3.0
+Werkzeug>=2.2
+pandas>=1.5
+plotly>=5.0
+requests>=2.28
+streamlit-option-menu>=0.3.0
